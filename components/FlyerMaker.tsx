@@ -907,7 +907,7 @@ export default function FlyerMaker() {
                 <span className="mt-1 block truncate text-xs font-medium text-slate-800">
                   {selectedTemplate.name}
                 </span>
-                <span className="block text-xs text-slate-500">
+                <span className="block text-xs text-slate-600">
                   {selectedTemplateIndex + 1} of {flyerTemplates.length}
                 </span>
               </button>
@@ -975,7 +975,7 @@ export default function FlyerMaker() {
                 type="button"
                 onClick={handleRemoveBackground}
                 disabled={!uploadedFile || isProcessing}
-                className="min-h-10 w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="min-h-10 w-full rounded-md bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 {isProcessing ? statusMessage[status] : "Remove Background"}
               </button>
@@ -1007,6 +1007,7 @@ export default function FlyerMaker() {
             {selectedTemplate.textFields.map((field) => {
               const sharedProps = {
                 id: `field-${field.id}`,
+                name: `field-${field.id}`,
                 value: textValues[field.id] ?? "",
                 placeholder: field.placeholder,
                 maxLength: field.maxLength,
@@ -1048,7 +1049,7 @@ export default function FlyerMaker() {
                   Delete Text
                 </button>
               ) : (
-                <span className="text-xs text-slate-500">Click text</span>
+                <span className="text-xs text-slate-600">Click text</span>
               )}
             </div>
 
@@ -1056,6 +1057,8 @@ export default function FlyerMaker() {
               <label className="col-span-2 text-xs font-medium text-slate-700 sm:col-span-1">
                 Font
                 <select
+                  id="text-font-family"
+                  name="text-font-family"
                   value={selectedTextLayout?.fontFamily ?? defaultPreviewFontFamily}
                   onChange={(event) => updateSelectedTextLayout({ fontFamily: event.target.value })}
                   disabled={!selectedTextField}
@@ -1072,6 +1075,8 @@ export default function FlyerMaker() {
               <label className="text-xs font-medium text-slate-700">
                 Weight
                 <select
+                  id="text-font-weight"
+                  name="text-font-weight"
                   value={String(selectedTextLayout?.fontWeight ?? 400)}
                   onChange={(event) =>
                     updateSelectedTextLayout({ fontWeight: Number(event.target.value) })
@@ -1090,6 +1095,8 @@ export default function FlyerMaker() {
               <label className="text-xs font-medium text-slate-700">
                 Style
                 <select
+                  id="text-font-style"
+                  name="text-font-style"
                   value={selectedTextLayout?.fontStyle ?? "normal"}
                   onChange={(event) =>
                     updateSelectedTextLayout({
@@ -1107,6 +1114,8 @@ export default function FlyerMaker() {
               <label className="text-xs font-medium text-slate-700">
                 Color
                 <input
+                  id="text-color"
+                  name="text-color"
                   type="color"
                   value={selectedTextLayout?.color ?? "#0b4f93"}
                   onChange={(event) => updateSelectedTextLayout({ color: event.target.value })}
@@ -1118,6 +1127,8 @@ export default function FlyerMaker() {
               <label className="text-xs font-medium text-slate-700">
                 Size
                 <input
+                  id="text-font-size"
+                  name="text-font-size"
                   type="number"
                   min="24"
                   max="180"
@@ -1135,6 +1146,8 @@ export default function FlyerMaker() {
               <label className="col-span-2 text-xs font-medium text-slate-700 sm:col-span-1">
                 Align
                 <select
+                  id="text-align"
+                  name="text-align"
                   value={selectedTextLayout?.textAlign ?? "left"}
                   onChange={(event) =>
                     updateSelectedTextLayout({ textAlign: event.target.value as TextAlign })
@@ -1156,7 +1169,7 @@ export default function FlyerMaker() {
             type="button"
             onClick={handleDownload}
             disabled={isExporting}
-            className="min-h-10 rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="min-h-10 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             Download PNG
           </button>
@@ -1174,7 +1187,7 @@ export default function FlyerMaker() {
       <section className="flex min-h-[380px] flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:min-h-[520px] sm:p-4 md:min-h-0 md:overflow-hidden">
         <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
           <h2 className="text-base font-semibold text-slate-950 sm:text-lg">Live Preview</h2>
-          <span className="text-sm text-slate-500">{selectedTemplate.name}</span>
+          <span className="text-sm text-slate-600">{selectedTemplate.name}</span>
         </div>
         {selectedTextField ? (
           <div className="sticky top-0 z-20 mb-2 rounded-lg border border-emerald-200 bg-white/95 p-2 shadow-sm backdrop-blur md:hidden">
@@ -1241,6 +1254,7 @@ export default function FlyerMaker() {
               src={selectedTemplate.backgroundImage}
               alt=""
               aria-hidden="true"
+              fetchPriority="high"
               className="absolute inset-0 h-full w-full object-cover"
             />
 
