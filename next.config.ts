@@ -4,6 +4,12 @@ import type { NextConfig } from "next";
 // (publicPath default). Photos are processed locally; only the model binary is fetched.
 const IMGLY_CDN = "https://staticimgly.com";
 
+// Vercel Blob: the browser uploads the rendered flyer here (connect-src) and the
+// /share page renders the stored flyer back (img-src). The wildcard covers both the
+// ingestion host (blob.vercel-storage.com) and the public read host
+// (*.public.blob.vercel-storage.com).
+const VERCEL_BLOB = "https://*.vercel-storage.com";
+
 // Origin(s) allowed to embed this app in an <iframe>. Set ALLOWED_FRAME_ANCESTOR in the
 // Vercel dashboard to the official site, e.g. "https://official.example" (space-separate
 // for multiple). Defaults to 'none' (deny-by-default): the app still loads directly, but
@@ -19,9 +25,9 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data:",
+  `img-src 'self' blob: data: ${VERCEL_BLOB}`,
   "worker-src 'self' blob:",
-  `connect-src 'self' blob: data: ${IMGLY_CDN}`,
+  `connect-src 'self' blob: data: ${IMGLY_CDN} ${VERCEL_BLOB}`,
   "font-src 'self' data:",
   // Hardening: no plugins, no <base> hijack, forms stay same-origin.
   "object-src 'none'",

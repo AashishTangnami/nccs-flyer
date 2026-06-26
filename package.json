@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
+    "@vercel/blob": "^2.4.0",
     "html-to-image": "^1.11.13",
     "next": "^16.2.7",
     "react": "^18.3.1",

@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
+import { upload } from "@vercel/blob/client";
 import { flyerTemplates } from "@/lib/flyer-templates";
 import type { FlyerTemplate, ProcessingStatus, TextAlign } from "@/lib/types";
 import {
@@ -137,6 +138,29 @@ function downloadBlob(blob: Blob, filename: string) {
   link.href = url;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+// Facebook doesn't allow a website to push a photo straight into a feed, so the
+// Share button hands off the rendered flyer two ways: the native share sheet on
+// mobile (real photo into the feed), or — on desktop, which has no Facebook share
+// target — upload the flyer and open Facebook's share dialog on a /share link.
+//
+// The share dialog takes ?u=<page-url>; Facebook scrapes that page's Open Graph
+// tags to build the feed preview, so we point it at our /share page (og:image = the
+// uploaded flyer) rather than at a raw image.
+const FACEBOOK_SHARER_URL = "https://www.facebook.com/sharer/sharer.php?u=";
+
+// Only phones/tablets list Facebook in the OS share sheet. Desktop share sheets
+// (macOS/Windows) only offer system apps like Mail/AirDrop, never Facebook, so
+// on desktop we must fall back to download + open Facebook instead.
+function isMobileShareDevice() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  // iPadOS Safari reports as "Macintosh" but exposes touch points.
+  const isIpadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  return /Android|iPhone|iPod/.test(ua) || isIpadOS;
 }
 
 function getResizeCursor(direction: ResizeDirection) {
@@ -337,6 +361,7 @@ export default function FlyerMaker() {
   const [selectedTextFieldId, setSelectedTextFieldId] = useState<string | null>(null);
   const [previewScale, setPreviewScale] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
+  const [shareHint, setShareHint] = useState<string | null>(null);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewShellRef = useRef<HTMLDivElement | null>(null);
@@ -534,23 +559,114 @@ export default function FlyerMaker() {
     return blob;
   };
 
-  const handleDownload = async () => {
+  // Render the flyer to a PNG blob, falling back to the canvas renderer when the
+  // DOM-to-image path fails (e.g. tainted images in some browsers).
+  const createFlyerBlobWithFallback = async () => {
     try {
-      setError(null);
-      setIsExporting(true);
-      const blob = await createFlyerBlob();
-      downloadBlob(blob, `flyer-${selectedTemplate.id}.png`);
+      return await createFlyerBlob();
     } catch (domExportError) {
       try {
-        const blob = await exportWithCanvas();
-        downloadBlob(blob, `flyer-${selectedTemplate.id}.png`);
+        return await exportWithCanvas();
       } catch (canvasExportError) {
         console.error("Flyer export failed", {
           domExportError,
           canvasExportError
         });
-        setError("Could not export the flyer. Please try again.");
+        throw new Error("Could not export the flyer. Please try again.");
+      }
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      setError(null);
+      setShareHint(null);
+      setIsExporting(true);
+      const blob = await createFlyerBlobWithFallback();
+      downloadBlob(blob, `flyer-${selectedTemplate.id}.png`);
+    } catch {
+      setError("Could not export the flyer. Please try again.");
+      setStatus("error");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const shareToFacebook = async () => {
+    // Safety net: the Share button is disabled until the photo is on the flyer,
+    // but guard here too so a stray call can't share an empty placeholder flyer.
+    if (!flyerPhotoUrl) {
+      setShareHint("Upload a photo to build your flyer before sharing.");
+      return;
+    }
+
+    // Mobile lists Facebook in the OS share sheet, so it can post the real photo.
+    // Desktop can't, so there we upload the flyer and share a /share link whose
+    // Open Graph image is the flyer (Facebook renders that as the post preview).
+    const useShareSheet = isMobileShareDevice() && typeof navigator.canShare === "function";
+
+    // The desktop path opens Facebook in a popup after an upload await, by which
+    // point the click's user activation is gone and the popup would be blocked.
+    // So open a blank tab synchronously now and redirect it once we have the URL.
+    const shareWindow = useShareSheet ? null : window.open("about:blank", "_blank");
+    if (shareWindow) {
+      shareWindow.opener = null;
+    }
+
+    try {
+      setError(null);
+      setShareHint(null);
+      setIsExporting(true);
+      const blob = await createFlyerBlobWithFallback();
+
+      // Mobile: the native share sheet hands the real PNG to the Facebook app, so
+      // the user posts it as an actual photo in their feed.
+      if (useShareSheet) {
+        const file = new File([blob], `flyer-${selectedTemplate.id}.png`, {
+          type: "image/png"
+        });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: selectedTemplate.name
+          });
+          setShareHint("Pick Facebook in the share menu, then post your flyer to your feed.");
+          return;
+        }
+      }
+
+      // Desktop (and mobile browsers without file share): upload the flyer to public
+      // storage so Facebook's scraper can read it, then open the share dialog.
+      setShareHint("Preparing your flyer preview…");
+      const uploaded = await upload(`flyer-${selectedTemplate.id}-${Date.now()}.png`, blob, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+        contentType: "image/png"
+      });
+
+      const shareUrl = new URL("/share", window.location.origin);
+      shareUrl.searchParams.set("img", uploaded.url);
+      shareUrl.searchParams.set("t", selectedTemplate.name);
+      const facebookUrl = `${FACEBOOK_SHARER_URL}${encodeURIComponent(shareUrl.toString())}`;
+
+      if (shareWindow && !shareWindow.closed) {
+        shareWindow.location.href = facebookUrl;
+      } else {
+        window.open(facebookUrl, "_blank", "noopener,noreferrer");
+      }
+      setShareHint(
+        "Facebook opened with your flyer as the preview. Add a caption and post it to your feed."
+      );
+    } catch (shareError) {
+      // Dismissing the native share sheet rejects with AbortError; that isn't a failure.
+      if ((shareError as Error)?.name !== "AbortError") {
+        console.error("Flyer share failed", shareError);
+        setError("Could not share to Facebook. You can download the flyer instead.");
         setStatus("error");
+      }
+      // Close the placeholder tab if we never navigated it to Facebook.
+      if (shareWindow && !shareWindow.closed) {
+        shareWindow.close();
       }
     } finally {
       setIsExporting(false);
@@ -569,6 +685,7 @@ export default function FlyerMaker() {
     setDeletedTextFieldIds([]);
     setSelectedTextFieldId(null);
     setError(null);
+    setShareHint(null);
     setStatus("idle");
 
     if (fileInputRef.current) {
@@ -605,6 +722,9 @@ export default function FlyerMaker() {
   const isProcessing = status === "preparing" || status === "removing" || status === "composing";
   const showRemoveBackgroundAction = !processedImageUrl;
   const flyerPhotoUrl = processedImageUrl;
+  // The flyer is shareable only once the user's photo has been composited onto it.
+  const isFlyerReady = Boolean(flyerPhotoUrl);
+  const canShare = isFlyerReady && !isProcessing && !isExporting;
   const displayedPhoto = flyerPhotoUrl ? photoAdjustment : null;
   const canvasHandleSize = 10 / Math.max(previewScale, 0.01);
   const canvasHandleBorder = 1 / Math.max(previewScale, 0.01);
@@ -1167,6 +1287,18 @@ export default function FlyerMaker() {
         <div className="sticky bottom-2 z-10 grid grid-cols-2 gap-2 rounded-lg bg-white/95 pt-1 backdrop-blur md:bg-white/95 lg:static lg:bg-transparent lg:pt-0 lg:backdrop-blur-0">
           <button
             type="button"
+            onClick={shareToFacebook}
+            disabled={!canShare}
+            title={isFlyerReady ? undefined : "Upload a photo to build your flyer before sharing."}
+            className="col-span-2 flex min-h-10 items-center justify-center gap-2 rounded-md bg-[#1877F2] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0f6ae0] disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+              <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07c0 6.02 4.39 11.01 10.13 11.93v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.69.24 2.69.24v2.97h-1.52c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8v8.44C19.61 23.08 24 18.09 24 12.07z" />
+            </svg>
+            Share to Facebook
+          </button>
+          <button
+            type="button"
             onClick={handleDownload}
             disabled={isExporting}
             className="min-h-10 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -1182,6 +1314,19 @@ export default function FlyerMaker() {
             Reset
           </button>
         </div>
+        {!isFlyerReady && !shareHint ? (
+          <p className="mt-2 text-xs text-slate-500" role="note">
+            Upload a photo to build your flyer, then share it straight to Facebook.
+          </p>
+        ) : null}
+        {shareHint ? (
+          <p
+            className="mt-2 rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-700"
+            role="status"
+          >
+            {shareHint}
+          </p>
+        ) : null}
       </section>
 
       <section className="flex min-h-[380px] flex-col rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:min-h-[520px] sm:p-4 md:min-h-0 md:overflow-hidden">
