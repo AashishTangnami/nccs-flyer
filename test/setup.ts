@@ -101,13 +101,17 @@ const canvasContext = {
   beginPath: vi.fn(),
   clip: vi.fn(),
   drawImage: vi.fn(),
+  ellipse: vi.fn(),
   fillText: vi.fn(),
   measureText: vi.fn((text: string) => ({ width: text.length * 20 })),
   rect: vi.fn(),
   restore: vi.fn(),
   save: vi.fn(),
+  stroke: vi.fn(),
   set fillStyle(_value: string) {},
   set font(_value: string) {},
+  set lineWidth(_value: number) {},
+  set strokeStyle(_value: string | CanvasGradient | CanvasPattern) {},
   set textAlign(_value: CanvasTextAlign) {},
   set textBaseline(_value: CanvasTextBaseline) {}
 };

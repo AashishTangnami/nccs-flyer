@@ -24,6 +24,12 @@ type ImageDimensions = {
   height: number;
 };
 
+type PhotoCrop = {
+  zoom: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 type TextAdjustment = {
   x: number;
   y: number;
@@ -74,11 +80,53 @@ const fontOptions = [
 const defaultPreviewFontFamily =
   '"Noto Sans", "Noto Sans Devanagari", system-ui, sans-serif';
 const defaultPhotoPlacement: PhotoAdjustment = {
-  left: 1924.12,
-  top: 1680,
-  width: 1397.19,
-  height: 2483.9
+  left: 1913.853607,
+  top: 2501.465164,
+  width: 1286.042459,
+  height: 1714.104918
 };
+const defaultPhotoCrop: PhotoCrop = { zoom: 1, offsetX: 0, offsetY: 0 };
+const minPhotoZoom = 1;
+const maxPhotoZoom = 3;
+
+function isBestWishesBlueTemplate(template: FlyerTemplate): boolean {
+  return template.backgroundImage === "/flyers-backgrounds/best wishes hm blue2.png";
+}
+
+function getPhotoPlacementForTemplate(template: FlyerTemplate): PhotoAdjustment {
+  if (isBestWishesBlueTemplate(template)) {
+    return {
+      left: 1138.67538,
+      top: 1550.934209,
+      width: 965.21669,
+      height: 989.463488
+    };
+  }
+
+  return defaultPhotoPlacement;
+}
+
+function getCircularPhotoLayout(
+  frame: PhotoAdjustment,
+  dimensions: ImageDimensions,
+  crop: PhotoCrop
+) {
+  const coverScale = Math.max(frame.width / dimensions.width, frame.height / dimensions.height);
+  const width = dimensions.width * coverScale * crop.zoom;
+  const height = dimensions.height * coverScale * crop.zoom;
+  const maxOffsetX = Math.max(0, (width - frame.width) / 2);
+  const maxOffsetY = Math.max(0, (height - frame.height) / 2);
+  const offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, crop.offsetX));
+  const offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, crop.offsetY));
+
+  return {
+    width,
+    height,
+    left: (frame.width - width) / 2 + offsetX,
+    top: (frame.height - height) / 2 + offsetY,
+    crop: { ...crop, offsetX, offsetY }
+  };
+}
 
 const resizeDirections: ResizeDirection[] = [
   "north-west",
@@ -325,13 +373,17 @@ export default function FlyerMaker() {
   const [originalPreviewUrl, setOriginalPreviewUrl] = useState<string | null>(null);
   const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
   const [processedDimensions, setProcessedDimensions] = useState<ImageDimensions | null>(null);
+  const [isUsingDirectUpload, setIsUsingDirectUpload] = useState(false);
   const [textValues, setTextValues] = useState<Record<string, string>>(() =>
     buildDefaultTextValues(selectedTemplate)
   );
   const [status, setStatus] = useState<ProcessingStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [photoAdjustment, setPhotoAdjustment] = useState<PhotoAdjustment>(defaultPhotoPlacement);
+  const [photoAdjustment, setPhotoAdjustment] = useState<PhotoAdjustment>(() =>
+    getPhotoPlacementForTemplate(selectedTemplate)
+  );
+  const [photoCrop, setPhotoCrop] = useState<PhotoCrop>(defaultPhotoCrop);
   const [textAdjustments, setTextAdjustments] = useState<Record<string, TextAdjustment>>({});
   const [deletedTextFieldIds, setDeletedTextFieldIds] = useState<string[]>([]);
   const [selectedTextFieldId, setSelectedTextFieldId] = useState<string | null>(null);
@@ -354,7 +406,8 @@ export default function FlyerMaker() {
           .map((field) => [field.id, current[field.id]])
       )
     }));
-    setPhotoAdjustment(defaultPhotoPlacement);
+    setPhotoAdjustment(getPhotoPlacementForTemplate(selectedTemplate));
+    setPhotoCrop(defaultPhotoCrop);
     setTextAdjustments({});
     setDeletedTextFieldIds([]);
     setSelectedTextFieldId(null);
@@ -451,6 +504,7 @@ export default function FlyerMaker() {
 
         setProcessedUrl(nextUrl);
         setProcessedDimensions(dimensions);
+        setIsUsingDirectUpload(false);
         setStatus("done");
       } catch (processingError) {
         if (photoProcessingIdRef.current !== activeProcessingId) {
@@ -468,6 +522,49 @@ export default function FlyerMaker() {
     [setProcessedUrl]
   );
 
+  useEffect(() => {
+    if (!uploadedFile || !originalPreviewUrl) {
+      return;
+    }
+
+    const isBlue = isBestWishesBlueTemplate(selectedTemplate);
+    if (isBlue && !isUsingDirectUpload) {
+      const processingId = ++photoProcessingIdRef.current;
+      const directUploadUrl = URL.createObjectURL(uploadedFile);
+      setProcessedUrl(directUploadUrl);
+      setIsUsingDirectUpload(true);
+      setStatus("done");
+      void loadImageDimensions(directUploadUrl).then((dimensions) => {
+        if (photoProcessingIdRef.current === processingId) {
+          setProcessedDimensions(dimensions);
+        }
+      }).catch(() => {
+        if (photoProcessingIdRef.current === processingId) {
+          setError("Could not load the uploaded image.");
+          setStatus("error");
+        }
+      });
+      return;
+    }
+
+    if (!isBlue && isUsingDirectUpload) {
+      const file = uploadedFile;
+      const processingId = ++photoProcessingIdRef.current;
+      setIsUsingDirectUpload(false);
+      setProcessedUrl(null);
+      setProcessedDimensions(null);
+      setStatus("preparing");
+      void processPhotoBackground(file, processingId);
+    }
+  }, [
+    selectedTemplate,
+    uploadedFile,
+    originalPreviewUrl,
+    isUsingDirectUpload,
+    processPhotoBackground,
+    setProcessedUrl
+  ]);
+
   const handleFile = useCallback(
     (file: File | null) => {
       if (!file) {
@@ -483,12 +580,49 @@ export default function FlyerMaker() {
 
       setUploadedFile(file);
       setOriginalUrl(URL.createObjectURL(file));
-      setProcessedUrl(null);
       setProcessedDimensions(null);
-      setPhotoAdjustment(defaultPhotoPlacement);
+      setIsUsingDirectUpload(false);
+      setPhotoAdjustment(getPhotoPlacementForTemplate(selectedTemplate));
+      setPhotoCrop(defaultPhotoCrop);
       setError(null);
+
       const processingId = photoProcessingIdRef.current + 1;
       photoProcessingIdRef.current = processingId;
+
+      if (isBestWishesBlueTemplate(selectedTemplate)) {
+        const displayUrl = URL.createObjectURL(file);
+        setProcessedUrl(displayUrl);
+        setIsUsingDirectUpload(true);
+        setStatus("done");
+
+        window.requestAnimationFrame(async () => {
+          if (photoProcessingIdRef.current !== processingId) {
+            revokeObjectUrl(displayUrl);
+            return;
+          }
+
+          try {
+            const dimensions = await loadImageDimensions(displayUrl);
+
+            if (photoProcessingIdRef.current !== processingId) {
+              revokeObjectUrl(displayUrl);
+              return;
+            }
+
+            setProcessedDimensions(dimensions);
+          } catch (error) {
+            revokeObjectUrl(displayUrl);
+            setProcessedUrl(null);
+            setProcessedDimensions(null);
+            setError("Could not load the uploaded image.");
+            setStatus("error");
+          }
+        });
+
+        return;
+      }
+
+      setProcessedUrl(null);
       window.requestAnimationFrame(() => {
         if (photoProcessingIdRef.current !== processingId) {
           return;
@@ -497,7 +631,7 @@ export default function FlyerMaker() {
         void processPhotoBackground(file, processingId);
       });
     },
-    [processPhotoBackground, setOriginalUrl, setProcessedUrl]
+    [processPhotoBackground, selectedTemplate, setOriginalUrl, setProcessedUrl]
   );
 
   const handleRemoveBackground = async () => {
@@ -563,8 +697,10 @@ export default function FlyerMaker() {
     setOriginalUrl(null);
     setProcessedUrl(null);
     setProcessedDimensions(null);
+    setIsUsingDirectUpload(false);
     setTextValues(buildDefaultTextValues(selectedTemplate));
-    setPhotoAdjustment(defaultPhotoPlacement);
+    setPhotoAdjustment(getPhotoPlacementForTemplate(selectedTemplate));
+    setPhotoCrop(defaultPhotoCrop);
     setTextAdjustments({});
     setDeletedTextFieldIds([]);
     setSelectedTextFieldId(null);
@@ -582,7 +718,9 @@ export default function FlyerMaker() {
     setOriginalUrl(null);
     setProcessedUrl(null);
     setProcessedDimensions(null);
-    setPhotoAdjustment(defaultPhotoPlacement);
+    setIsUsingDirectUpload(false);
+    setPhotoAdjustment(getPhotoPlacementForTemplate(selectedTemplate));
+    setPhotoCrop(defaultPhotoCrop);
     setError(null);
     setStatus("idle");
 
@@ -609,6 +747,14 @@ export default function FlyerMaker() {
   const canvasHandleSize = 10 / Math.max(previewScale, 0.01);
   const canvasHandleBorder = 1 / Math.max(previewScale, 0.01);
   const canvasRingWidth = 2 / Math.max(previewScale, 0.01);
+  const shouldUseCircularPhotoLayout = isBestWishesBlueTemplate(selectedTemplate);
+  const photoOutlineStyle = shouldUseCircularPhotoLayout
+    ? "15.737705px solid rgba(56, 189, 248, 0.7)"
+    : `${canvasRingWidth}px solid rgb(56 189 248 / 0.7)`;
+  const circularPhotoLayout =
+    shouldUseCircularPhotoLayout && displayedPhoto && processedDimensions
+      ? getCircularPhotoLayout(displayedPhoto, processedDimensions, photoCrop)
+      : null;
 
   const getTextLayout = (field: FlyerTemplate["textFields"][number]): TextAdjustment =>
     textAdjustments[field.id] ?? {
@@ -686,6 +832,53 @@ export default function FlyerMaker() {
         left: startPhoto.left + (moveEvent.clientX - startX) / previewScale,
         top: startPhoto.top + (moveEvent.clientY - startY) / previewScale
       });
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
+
+  const updatePhotoZoom = (zoom: number) => {
+    const nextZoom = Math.max(minPhotoZoom, Math.min(maxPhotoZoom, zoom));
+
+    setPhotoCrop((current) => {
+      const nextCrop = { ...current, zoom: nextZoom };
+      return displayedPhoto && processedDimensions
+        ? getCircularPhotoLayout(displayedPhoto, processedDimensions, nextCrop).crop
+        : nextCrop;
+    });
+  };
+
+  const startCircularPhotoPan = (event: React.PointerEvent<HTMLElement>) => {
+    if (!displayedPhoto || !processedDimensions) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startCrop = getCircularPhotoLayout(
+      displayedPhoto,
+      processedDimensions,
+      photoCrop
+    ).crop;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextCrop = {
+        ...startCrop,
+        offsetX: startCrop.offsetX + (moveEvent.clientX - startX) / previewScale,
+        offsetY: startCrop.offsetY + (moveEvent.clientY - startY) / previewScale
+      };
+      setPhotoCrop(
+        getCircularPhotoLayout(displayedPhoto, processedDimensions, nextCrop).crop
+      );
     };
 
     const handlePointerUp = () => {
@@ -817,13 +1010,58 @@ export default function FlyerMaker() {
 
     if (flyerPhotoUrl && displayedPhoto) {
       const processedImage = await loadDrawableImage(flyerPhotoUrl);
-      context.drawImage(
-        processedImage,
-        displayedPhoto.left,
-        displayedPhoto.top,
-        displayedPhoto.width,
-        displayedPhoto.height
-      );
+
+      if (shouldUseCircularPhotoLayout) {
+        context.save();
+        context.beginPath();
+        context.ellipse(
+          displayedPhoto.left + displayedPhoto.width / 2,
+          displayedPhoto.top + displayedPhoto.height / 2,
+          displayedPhoto.width / 2,
+          displayedPhoto.height / 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+        context.clip();
+      }
+
+      if (shouldUseCircularPhotoLayout && circularPhotoLayout) {
+        context.drawImage(
+          processedImage,
+          displayedPhoto.left + circularPhotoLayout.left,
+          displayedPhoto.top + circularPhotoLayout.top,
+          circularPhotoLayout.width,
+          circularPhotoLayout.height
+        );
+      } else {
+        context.drawImage(
+          processedImage,
+          displayedPhoto.left,
+          displayedPhoto.top,
+          displayedPhoto.width,
+          displayedPhoto.height
+        );
+      }
+
+      if (shouldUseCircularPhotoLayout) {
+        context.restore();
+        context.save();
+        context.beginPath();
+        context.ellipse(
+          displayedPhoto.left + displayedPhoto.width / 2,
+          displayedPhoto.top + displayedPhoto.height / 2,
+          displayedPhoto.width / 2,
+          displayedPhoto.height / 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+        context.lineWidth = 15.737705;
+        context.strokeStyle = "rgba(56, 189, 248, 0.7)";
+        context.stroke();
+        context.restore();
+      }
     }
 
     selectedTemplate.textFields.forEach((field) => {
@@ -991,6 +1229,53 @@ export default function FlyerMaker() {
               </button>
             ) : null}
           </div>
+          {shouldUseCircularPhotoLayout && flyerPhotoUrl ? (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <label
+                  htmlFor="photo-zoom"
+                  className="text-xs font-semibold text-slate-800"
+                >
+                  Photo zoom
+                </label>
+                <span className="text-xs tabular-nums text-slate-600">
+                  {Math.round(photoCrop.zoom * 100)}%
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-[36px_1fr_36px] items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Zoom out photo"
+                  onClick={() => updatePhotoZoom(photoCrop.zoom - 0.1)}
+                  disabled={!processedDimensions || photoCrop.zoom <= minPhotoZoom}
+                  className="h-9 rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300"
+                >
+                  −
+                </button>
+                <input
+                  id="photo-zoom"
+                  type="range"
+                  min={minPhotoZoom * 100}
+                  max={maxPhotoZoom * 100}
+                  step="1"
+                  value={Math.round(photoCrop.zoom * 100)}
+                  disabled={!processedDimensions}
+                  onChange={(event) => updatePhotoZoom(Number(event.target.value) / 100)}
+                  className="w-full accent-sky-600"
+                />
+                <button
+                  type="button"
+                  aria-label="Zoom in photo"
+                  onClick={() => updatePhotoZoom(photoCrop.zoom + 0.1)}
+                  disabled={!processedDimensions || photoCrop.zoom >= maxPhotoZoom}
+                  className="h-9 rounded-md border border-slate-300 bg-white text-lg font-semibold text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300"
+                >
+                  +
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-slate-600">Drag the photo inside the circle to reposition it.</p>
+            </div>
+          ) : null}
           <p className="mt-1 text-xs text-slate-600" role="status">
             {statusMessage[status]}
           </p>
@@ -1262,24 +1547,40 @@ export default function FlyerMaker() {
               <div
                 data-testid="flyer-photo"
                 className="absolute max-w-none select-none touch-none"
-                onPointerDown={startPhotoMove}
+                onPointerDown={
+                  shouldUseCircularPhotoLayout ? startCircularPhotoPan : startPhotoMove
+                }
                 style={{
                   left: displayedPhoto.left,
                   top: displayedPhoto.top,
                   width: displayedPhoto.width,
                   height: displayedPhoto.height,
-                  outline: !isExporting
-                    ? `${canvasRingWidth}px solid rgb(56 189 248 / 0.7)`
-                    : undefined
+                  borderRadius: shouldUseCircularPhotoLayout ? "50%" : undefined,
+                  overflow: "hidden",
+                  backgroundColor: shouldUseCircularPhotoLayout ? "transparent" : undefined,
+                  outline: !isExporting ? photoOutlineStyle : undefined
                 }}
               >
                 <img
                   src={flyerPhotoUrl}
                   alt={processedImageUrl ? "Background removed uploaded photo" : "Uploaded photo"}
-                  className="h-full w-full cursor-move object-fill"
+                  className={
+                    shouldUseCircularPhotoLayout
+                      ? circularPhotoLayout
+                        ? "absolute max-w-none cursor-move select-none"
+                        : "absolute h-full w-full max-w-none cursor-move select-none object-cover"
+                      : "h-full w-full cursor-move object-fill"
+                  }
                   draggable={false}
+                  style={{
+                    backgroundColor: shouldUseCircularPhotoLayout ? "transparent" : undefined,
+                    left: circularPhotoLayout?.left,
+                    top: circularPhotoLayout?.top,
+                    width: circularPhotoLayout?.width,
+                    height: circularPhotoLayout?.height
+                  }}
                 />
-                {!isExporting
+                {!isExporting && !shouldUseCircularPhotoLayout
                   ? resizeDirections.map((direction) => (
                       <button
                         key={direction}

@@ -69,110 +69,6 @@ export const flyerTemplates: FlyerTemplate[] = [
     ]
   },
   {
-    id: "bright-top-promotion",
-    name: "Share it with your Friends",
-    backgroundImage: "/flyers-backgrounds/himalayan_flyer_1.jpg",
-    ...flyerSize,
-    photoSlot: {
-      x: 285,
-      y: 360,
-      width: 720,
-      height: 900,
-      borderRadius: 24
-    },
-    textFields: [
-      {
-        id: "promoterName",
-        label: "Promoter name",
-        placeholder: "Your Name",
-        x: textOrigin.x,
-        y: textOrigin.y,
-        width: 850,
-        height: 120,
-        fontSize: 78,
-        fontWeight: 900,
-        color: "#0b4f93",
-        textAlign: "center",
-        maxLength: 42
-      },
-      {
-        id: "message",
-        label: "Promotion message",
-        placeholder: "Proudly promoting Himalayan Mela",
-        x: textOrigin.x,
-        y: textOrigin.y + 135,
-        width: 1200,
-        height: 170,
-        fontSize: 50,
-        fontWeight: 800,
-        color: "#b00000",
-        textAlign: "center",
-        lineHeight: 1.2,
-        multiline: true,
-        maxLength: 110
-      }
-    ]
-  },
-  {
-    id: "red-side-promotion",
-    name: "Share it with your Friends",
-    backgroundImage: "/flyers-backgrounds/himalayan_flyer_2.jpg",
-    ...flyerSize,
-    photoSlot: {
-      x: 2250,
-      y: 360,
-      width: 720,
-      height: 940,
-      borderRadius: 24
-    },
-    textFields: [
-      {
-        id: "promoterName",
-        label: "Promoter name",
-        placeholder: "Your Name",
-        x: textOrigin.x,
-        y: textOrigin.y,
-        width: 1020,
-        height: 130,
-        fontSize: 82,
-        fontWeight: 900,
-        color: "#0b4f93",
-        textAlign: "center",
-        maxLength: 42
-      },
-      {
-        id: "role",
-        label: "Role or subtitle",
-        placeholder: "Community Promoter",
-        x: textOrigin.x,
-        y: textOrigin.y + 135,
-        width: 960,
-        height: 90,
-        fontSize: 50,
-        fontWeight: 800,
-        color: "#b00000",
-        textAlign: "center",
-        maxLength: 58
-      },
-      {
-        id: "message",
-        label: "Promotion message",
-        placeholder: "Celebrate Nepalese heritage with us",
-        x: textOrigin.x,
-        y: textOrigin.y + 270,
-        width: 1040,
-        height: 180,
-        fontSize: 48,
-        fontWeight: 700,
-        color: "#0b3f78",
-        textAlign: "center",
-        lineHeight: 1.2,
-        multiline: true,
-        maxLength: 120
-      }
-    ]
-  },
-  {
     id: "bottom-photo-promotion",
     name: "Promote yourself in Himalayan Mela",
     backgroundImage: "/flyers-backgrounds/himalayan_flyer_bright_promoter_placeholder.jpg",
@@ -189,8 +85,8 @@ export const flyerTemplates: FlyerTemplate[] = [
         id: "promoterName",
         label: "Promoter name",
         placeholder: "Your Name",
-        x: textOrigin.x,
-        y: textOrigin.y,
+        x: -151.068436,
+        y: 3277.098788,
         width: 2200,
         height: 130,
         fontSize: 92,
@@ -203,29 +99,60 @@ export const flyerTemplates: FlyerTemplate[] = [
         id: "message",
         label: "Promotion message",
         placeholder: "See you at Himalayan Mela",
-        x: textOrigin.x,
-        y: textOrigin.y + 135,
+        x: -72.97144,
+        y: 3464.459273,
         width: 2200,
         height: 110,
-        fontSize: 56,
+        fontSize: 71,
         fontWeight: 700,
         color: "#b00000",
         textAlign: "center",
         maxLength: 80
+      }
+    ]
+  },
+  {
+    id: "best-wishes-hm-blue",
+    name: "Best Wishes in Himalayan Mela",
+    backgroundImage: "/flyers-backgrounds/best wishes hm blue2.png",
+    ...flyerSize,
+    photoSlot: {
+      x: 430,
+      y: 1480,
+      width: 2380,
+      height: 1760,
+      borderRadius: 24
+    },
+    textFields: [
+      {
+        id: "promoterName",
+        label: "Promoter name",
+        placeholder: "Your Name",
+        x: -345.653543,
+        y: 2165.136933,
+        width: 1800,
+        height: 205.968296,
+        fontSize: 100,
+        fontWeight: 900,
+        color: "#ffffff",
+        textAlign: "center",
+        maxLength: 42
       },
       {
-        id: "cta",
-        label: "Call to action",
-        placeholder: "August 8, 2026",
-        x: textOrigin.x,
-        y: textOrigin.y + 270,
-        width: 1720,
-        height: 90,
-        fontSize: 54,
-        fontWeight: 800,
-        color: "#0b4f93",
+        id: "message",
+        label: "Promotion message",
+        placeholder: "Best wishes for Himalayan Mela",
+        x: 579.611789,
+        y: 2606.772823,
+        width: 2225.317721,
+        height: 333.003986,
+        fontSize: 100,
+        fontWeight: 700,
+        color: "#ffffff",
         textAlign: "center",
-        maxLength: 54
+        lineHeight: 1.2,
+        multiline: true,
+        maxLength: 120
       }
     ]
   }

@@ -45,6 +45,12 @@ async function uploadValidPhoto(user: ReturnType<typeof userEvent.setup>) {
   await user.upload(input, makeFile());
 }
 
+async function selectBlueTemplate(user: ReturnType<typeof userEvent.setup>) {
+  for (let index = 0; index < 2; index += 1) {
+    await user.click(screen.getByRole("button", { name: "Next template" }));
+  }
+}
+
 describe("FlyerMaker", () => {
   beforeEach(() => {
     mocks.resizeImage.mockResolvedValue(new Blob(["resized"], { type: "image/png" }));
@@ -74,15 +80,43 @@ describe("FlyerMaker", () => {
     await user.click(screen.getByRole("button", { name: "Next template" }));
 
     expect(
-      screen.getByRole("button", { name: "Selected template: Share it with your Friends" })
+      screen.getByRole("button", { name: "Selected template: Promote yourself in Himalayan Mela" })
     ).toBeInTheDocument();
-    expect(screen.getByText("2 of 4")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3")).toBeInTheDocument();
     expect(screen.getAllByAltText(/flyer template/i)).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "Previous template" }));
     expect(
       screen.getByRole("button", { name: "Selected template: Promote yourself in Himalayan Mela" })
     ).toBeInTheDocument();
+  });
+
+  it("uses the custom white text layout on the blue template", async () => {
+    const user = userEvent.setup();
+    renderFlyerMaker();
+    await selectBlueTemplate(user);
+
+    expect(screen.getByTestId("flyer-text-promoterName")).toHaveStyle({
+      left: "-345.653543px",
+      top: "2165.136933px",
+      width: "1800px",
+      height: "205.968296px",
+      color: "rgb(255, 255, 255)",
+      fontSize: "100px",
+      fontWeight: "900",
+      textAlign: "center"
+    });
+    expect(screen.getByTestId("flyer-text-message")).toHaveStyle({
+      left: "579.611789px",
+      top: "2606.772823px",
+      width: "2225.317721px",
+      height: "333.003986px",
+      color: "rgb(255, 255, 255)",
+      fontSize: "100px",
+      fontWeight: "700",
+      lineHeight: "1.2",
+      textAlign: "center"
+    });
   });
 
   it("rejects unsupported files", async () => {
@@ -187,8 +221,8 @@ describe("FlyerMaker", () => {
     fireEvent.pointerUp(window);
 
     expect(photo).toHaveStyle({
-      left: "2024.12px",
-      top: "1740px"
+      left: "2013.853607px",
+      top: "2561.465164px"
     });
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Resize photo south-east" }), {
@@ -199,7 +233,7 @@ describe("FlyerMaker", () => {
     fireEvent.pointerUp(window);
 
     expect(photo).toHaveStyle({
-      width: "1497.19px"
+      width: "1386.042459px"
     });
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Resize photo north-west" }), {
@@ -210,11 +244,96 @@ describe("FlyerMaker", () => {
     fireEvent.pointerUp(window);
 
     expect(photo).toHaveStyle({
-      left: "1924.12px",
-      top: "1640px",
-      width: "1597.19px",
-      height: "2683.9px"
+      left: "1913.853607px",
+      top: "2461.465164px",
+      width: "1486.042459px",
+      height: "1914.104918px"
     });
+  });
+
+  it("zooms and pans inside the fixed blue circular frame", async () => {
+    const user = userEvent.setup();
+    renderFlyerMaker();
+    await selectBlueTemplate(user);
+    await uploadValidPhoto(user);
+
+    const zoom = await screen.findByLabelText("Photo zoom");
+    await waitFor(() => expect(zoom).toBeEnabled());
+
+    const photo = screen.getByTestId("flyer-photo");
+    const image = within(photo).getByRole("img");
+    const initialFrameStyle = {
+      left: photo.style.left,
+      top: photo.style.top,
+      width: photo.style.width,
+      height: photo.style.height
+    };
+
+    expect(screen.queryByRole("button", { name: /Resize photo/i })).not.toBeInTheDocument();
+    fireEvent.change(zoom, { target: { value: "200" } });
+
+    await waitFor(() => expect(zoom).toHaveValue("200"));
+    expect(parseFloat(image.style.width)).toBeCloseTo(parseFloat(photo.style.width) * 2);
+    expect(parseFloat(image.style.left)).toBeLessThan(0);
+
+    fireEvent.pointerDown(photo, { clientX: 20, clientY: 20 });
+    fireEvent.pointerMove(window, { clientX: 10020, clientY: 10020 });
+    fireEvent.pointerUp(window);
+
+    expect(photo).toHaveStyle(initialFrameStyle);
+    expect(image).toHaveStyle({ left: "0px", top: "0px" });
+
+    await user.click(screen.getByRole("button", { name: "Zoom out photo" }));
+    expect(zoom).toHaveValue("190");
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.queryByTestId("flyer-photo")).not.toBeInTheDocument();
+  });
+
+  it("uses the visible blue crop in the canvas export fallback", async () => {
+    const user = userEvent.setup();
+    mocks.toBlob.mockRejectedValueOnce(new Error("DOM export failed"));
+    renderFlyerMaker();
+    await selectBlueTemplate(user);
+    await uploadValidPhoto(user);
+
+    const zoom = await screen.findByLabelText("Photo zoom");
+    await waitFor(() => expect(zoom).toBeEnabled());
+    fireEvent.change(zoom, { target: { value: "200" } });
+
+    const photo = screen.getByTestId("flyer-photo");
+    const image = within(photo).getByRole("img");
+    await user.click(screen.getByRole("button", { name: "Download PNG" }));
+
+    const getContextMock = vi.mocked(HTMLCanvasElement.prototype.getContext);
+    await waitFor(() => expect(getContextMock).toHaveBeenCalled());
+    const canvasContext = getContextMock.mock.results.at(-1)?.value as unknown as {
+      drawImage: ReturnType<typeof vi.fn>;
+    };
+    await waitFor(() => expect(canvasContext.drawImage).toHaveBeenCalledTimes(2));
+    const photoDraw = canvasContext.drawImage.mock.calls[1];
+
+    expect(photoDraw[1]).toBeCloseTo(parseFloat(photo.style.left) + parseFloat(image.style.left));
+    expect(photoDraw[2]).toBeCloseTo(parseFloat(photo.style.top) + parseFloat(image.style.top));
+    expect(photoDraw[3]).toBeCloseTo(parseFloat(image.style.width));
+    expect(photoDraw[4]).toBeCloseTo(parseFloat(image.style.height));
+  });
+
+  it("resets the crop and restores background removal when switching templates", async () => {
+    const user = userEvent.setup();
+    renderFlyerMaker();
+    await selectBlueTemplate(user);
+    await uploadValidPhoto(user);
+
+    const zoom = await screen.findByLabelText("Photo zoom");
+    await waitFor(() => expect(zoom).toBeEnabled());
+    fireEvent.change(zoom, { target: { value: "200" } });
+
+    await user.click(screen.getByRole("button", { name: "Next template" }));
+    await waitFor(() => expect(mocks.removeImageBackground).toHaveBeenCalled());
+    expect(screen.queryByLabelText("Photo zoom")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Previous template" }));
+    expect(await screen.findByLabelText("Photo zoom")).toHaveValue("100");
   });
 
   it("keeps photo placement after the background-removed image loads", async () => {
@@ -233,8 +352,8 @@ describe("FlyerMaker", () => {
     expect(mocks.removeImageBackground).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Remove Background" })).not.toBeInTheDocument();
     expect(processedPhoto).toHaveStyle({
-      left: "2024.12px",
-      top: "1740px"
+      left: "2013.853607px",
+      top: "2561.465164px"
     });
   });
 
@@ -260,7 +379,7 @@ describe("FlyerMaker", () => {
     await user.click(screen.getByRole("button", { name: "Reset" }));
 
     expect(
-      screen.getByRole("button", { name: "Selected template: Share it with your Friends" })
+      screen.getByRole("button", { name: "Selected template: Promote yourself in Himalayan Mela" })
     ).toBeInTheDocument();
     expect(screen.queryByTestId("flyer-photo")).not.toBeInTheDocument();
     expect(within(screen.getByTestId("flyer-text-promoterName")).queryByText("NCCS")).toBeNull();
